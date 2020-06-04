@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/xml"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/build"
@@ -17,8 +18,29 @@ import (
 
 const coberturaDTDDecl = "<!DOCTYPE coverage SYSTEM \"http://cobertura.sourceforge.net/xml/coverage-04.dtd\">\n"
 
+var (
+	Path       = flag.String("path", "", "absolute path to the project")
+	ModuleName = flag.String("mname", "", "name of the module")
+)
+
 func main() {
-	convert(os.Stdin, os.Stdout)
+	flag.Parse()
+
+	input, err := os.Open(filepath.Join(*Path, "overalls.coverprofile"))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer input.Close()
+
+	output, err := os.Create(filepath.Join(*Path, "coverage.xml"))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer output.Close()
+
+	convert(input, output)
 }
 
 func convert(in io.Reader, out io.Writer) {
@@ -34,7 +56,11 @@ func convert(in io.Reader, out io.Writer) {
 	}
 
 	coverage := Coverage{Sources: sources, Packages: nil, Timestamp: time.Now().UnixNano() / int64(time.Millisecond)}
-	coverage.parseProfiles(profiles)
+	err = coverage.parseProfiles(profiles)
+
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Fprintf(out, xml.Header)
 	fmt.Fprintf(out, coberturaDTDDecl)
@@ -52,7 +78,11 @@ func convert(in io.Reader, out io.Writer) {
 func (cov *Coverage) parseProfiles(profiles []*Profile) error {
 	cov.Packages = []*Package{}
 	for _, profile := range profiles {
-		cov.parseProfile(profile)
+		err := cov.parseProfile(profile)
+
+		if err != nil {
+			return err
+		}
 	}
 	cov.LinesValid = cov.NumLines()
 	cov.LinesCovered = cov.NumLinesWithHits()
@@ -62,10 +92,8 @@ func (cov *Coverage) parseProfiles(profiles []*Profile) error {
 
 func (cov *Coverage) parseProfile(profile *Profile) error {
 	fileName := profile.FileName
-	absFilePath, err := findFile(fileName)
-	if err != nil {
-		return err
-	}
+	absFilePath := findFilePath(fileName)
+
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, absFilePath, nil, 0)
 	if err != nil {

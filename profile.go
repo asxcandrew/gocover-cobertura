@@ -9,7 +9,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"go/build"
 	"io"
 	"math"
 	"os"
@@ -185,18 +184,15 @@ func (b boundariesByPos) Less(i, j int) bool {
 	return b[i].Offset < b[j].Offset
 }
 
-// findFile finds the location of the named file in GOROOT, GOPATH etc.
-func findFile(file string) (string, error) {
+// findFilePath finds the location of the named file in GOROOT, GOPATH etc.
+func findFilePath(file string) string {
 	if strings.HasPrefix(file, "_") {
 		file = file[1:]
 	}
 	if _, err := os.Stat(file); err == nil {
-		return file, nil
+		return file
 	}
-	dir, file := filepath.Split(file)
-	pkg, err := build.Import(dir, ".", build.FindOnly)
-	if err != nil {
-		return "", fmt.Errorf("can't find %q: %v", file, err)
-	}
-	return filepath.Join(pkg.Dir, file), nil
+
+	relativePath := strings.Replace(file, *ModuleName, "", 1)
+	return filepath.Join(*Path, relativePath)
 }
